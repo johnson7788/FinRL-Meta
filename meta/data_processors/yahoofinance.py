@@ -1,4 +1,5 @@
 """Reference: https://github.com/AI4Finance-LLC/FinRL"""
+import os
 from typing import List
 
 import numpy as np
@@ -46,13 +47,22 @@ class Yahoofinance(_Base):
             ticker_list, TIME_ZONE_SELFDEFINED, USE_TIME_ZONE_SELFDEFINED
         )
         self.dataframe = pd.DataFrame()
+        cache_dir = "cache"
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir)
         for tic in ticker_list:
-            temp_df = yf.download(
-                tic,
-                start=self.start_date,
-                end=self.end_date,
-                interval=self.time_interval,
-            )
+            cache_file = f"{tic}_{self.start_date}_{self.end_date}_{self.time_interval}"
+            cache_path = os.path.join(cache_dir,cache_file)
+            if os.path.exists(cache_path):
+                temp_df = pd.read_pickle(cache_path)
+            else:
+                temp_df = yf.download(
+                    tic,
+                    start=self.start_date,
+                    end=self.end_date,
+                    interval=self.time_interval,
+                )
+                temp_df.to_pickle(cache_path)
             temp_df["tic"] = tic
             self.dataframe = pd.concat([self.dataframe, temp_df], axis=0, join="outer")
         self.dataframe.reset_index(inplace=True)

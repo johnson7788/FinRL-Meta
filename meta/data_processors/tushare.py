@@ -3,7 +3,7 @@ import time
 import warnings
 from copy import deepcopy
 from typing import List
-
+import os
 import pandas as pd
 from tqdm import tqdm
 
@@ -62,15 +62,23 @@ class Tushare(_Base):
 
         self.ticker_list = ticker_list
         ts.set_token(self.token)
-
+        cache_dir = "cache"
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir)
         self.dataframe = pd.DataFrame()
-        for i in tqdm(ticker_list, total=len(ticker_list)):
+        for tic in tqdm(ticker_list, total=len(ticker_list)):
             # nonstandard_id = self.transfer_standard_ticker_to_nonstandard(i)
             # df_temp = self.get_data(nonstandard_id)
-            df_temp = self.get_data(i)
+            cache_file = f"{tic}_{self.start_date}_{self.end_date}"
+            cache_path = os.path.join(cache_dir,cache_file)
+            if os.path.exists(cache_path):
+                df_temp = pd.read_pickle(cache_path)
+            else:
+                df_temp = self.get_data(tic)
+                df_temp.to_pickle(cache_path)
+                time.sleep(0.25)
             self.dataframe = self.dataframe.append(df_temp)
             # print("{} ok".format(i))
-            time.sleep(0.25)
 
         self.dataframe.columns = [
             "tic",
