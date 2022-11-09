@@ -4,9 +4,6 @@ warnings.filterwarnings("ignore")
 
 import pandas as pd
 from IPython import display
-
-display.set_matplotlib_formats("svg")
-
 from meta import config
 from meta.data_processor import DataProcessor
 from main import check_and_make_directories
