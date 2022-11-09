@@ -40,7 +40,7 @@ from meta.config import (
 )
 import pyfolio
 from pyfolio import timeseries
-from data_download import get_daily_stock_and_indicator, INDICATORS
+from data_download import get_daily_stock_and_indicator, INDICATORS as myindicators
 
 pd.options.display.max_columns = None
 
@@ -106,19 +106,31 @@ def download_data(TRAIN_START_DATE, TRADE_END_DATE, mini=False, stock_config={})
     ]
         # download and clean
         p.download_data(ticker_list=ticker_list)
+        p.clean_data()
+        # add_technical_indicator
+        p.add_technical_indicator(config.INDICATORS)
+        INDICATORS = config.INDICATORS
     else:
         data_df = get_daily_stock_and_indicator(TRAIN_START_DATE,TRADE_END_DATE,mini,stock_config=stock_config)
+        data_df.rename(columns={"ts_code": "tic", "vol": "volume", "trade_date": "date"}, inplace=True)
+        data_df["day"] = data_df["date"].dt.dayofweek
+        data_df["date"] = data_df.date.apply( lambda x: x.strftime("%Y-%m-%d"))
+        data_df.dropna(inplace=True)
+        data_df.reset_index(drop=True, inplace=True)
+        print("Shape of DataFrame: ", data_df.shape)
+        data_df.sort_values(by=["date", "tic"], inplace=True)
+        data_df.reset_index(drop=True, inplace=True)
+        ticker_list = data_df["tic"].unique().tolist()
         p.dataframe = data_df
-    p.clean_data()
-    # add_technical_indicator
-    p.add_technical_indicator(config.INDICATORS)
+        p.processor.ticker_list = ticker_list
+        INDICATORS = myindicators
     p.clean_data()
     print(f"p.dataframe: {p.dataframe}")
 
-    return p
+    return p, INDICATORS
 
 
-def preprocess_data(p):
+def preprocess_data(p, INDICATORS):
     ### Split traning dataset
 
     train = p.data_split(p.dataframe, TRAIN_START_DATE, TRAIN_END_DATE)
@@ -131,11 +143,11 @@ def preprocess_data(p):
     print(f"train.shape: {train.shape}")
 
     stock_dimension = len(train.tic.unique())
-    state_space = stock_dimension * (len(config.INDICATORS) + 2) + 1
+    state_space = stock_dimension * (len(INDICATORS) + 2) + 1
     print(f"Stock Dimension: {stock_dimension}, State Space: {state_space}")
     return train, stock_dimension,state_space
 
-def setup_env(train_data, stock_dimension,state_space):
+def setup_env(train_data, stock_dimension,state_space, INDICATORS):
     ### Train
     env_kwargs = {
         "stock_dim": stock_dimension,
@@ -146,7 +158,7 @@ def setup_env(train_data, stock_dimension,state_space):
         "reward_scaling": 1e-4,
         "state_space": state_space,
         "action_space": stock_dimension,
-        "tech_indicator_list": config.INDICATORS,
+        "tech_indicator_list": INDICATORS,
         "print_verbosity": 1,
         "initial_buy": True,
         "hundred_each_trade": True,
@@ -236,7 +248,7 @@ def sac(env_train, total_timesteps=30000):
                                     total_timesteps=total_timesteps)
     return trained_sac
 
-def trade_test_data(trained_model, data_p,stock_dimension,state_space):
+def trade_test_data(trained_model, data_p,stock_dimension,state_space, INDICATORS):
     ### Trade
     trade = data_p.data_split(data_p.dataframe, TRADE_START_DATE, TRADE_END_DATE)
     env_kwargs = {
@@ -248,7 +260,7 @@ def trade_test_data(trained_model, data_p,stock_dimension,state_space):
         "reward_scaling": 1e-4,
         "state_space": state_space,
         "action_space": stock_dimension,
-        "tech_indicator_list": config.INDICATORS,
+        "tech_indicator_list": INDICATORS,
         "print_verbosity": 1,
         "initial_buy": False,
         "hundred_each_trade": True,
@@ -338,9 +350,9 @@ if __name__ == '__main__':
     print(f"训练日期是: {TRAIN_START_DATE} 到 {TRAIN_END_DATE}, 预测日期是: {TRADE_START_DATE} 到 {TRADE_END_DATE}")
     print(f"使用的模型是: {model}")
     stock_config = {"stock_type": args.stock_type, "stock_num": args.stock_num}
-    data_p = download_data(TRAIN_START_DATE, TRADE_END_DATE, mini=args.mini, stock_config=stock_config)
-    train_data, stock_dimension,state_space= preprocess_data(data_p)
-    env_train, env_kwargs = setup_env(train_data,stock_dimension,state_space)
+    data_p, INDICATORS = download_data(TRAIN_START_DATE, TRADE_END_DATE, mini=args.mini, stock_config=stock_config)
+    train_data, stock_dimension,state_space= preprocess_data(data_p, INDICATORS)
+    env_train, env_kwargs = setup_env(train_data,stock_dimension,state_space, INDICATORS)
     if model == "sac":
         trained_model = sac(env_train, total_timesteps=args.timesteps)
     elif model =="td3":
@@ -356,7 +368,7 @@ if __name__ == '__main__':
             print(f"使用的模型是: {model_name}")
             model_func = eval(model_name)
             trained_model = model_func(env_train, total_timesteps=args.timesteps)
-            df_account_value, df_actions, trade_data = trade_test_data(trained_model, data_p,stock_dimension,state_space)
+            df_account_value, df_actions, trade_data = trade_test_data(trained_model, data_p,stock_dimension,state_space,INDICATORS)
             now = datetime.datetime.now().strftime('%Y%m%d-%Hh%M')
             trade_action_file = f"action_{model_name}_{now}.xlsx"
             df_actions.to_excel(trade_action_file, index=False)
@@ -379,7 +391,7 @@ if __name__ == '__main__':
     else:
         print(f"不支持的模型,退出")
         sys.exit(0)
-    df_account_value, df_actions, trade_data = trade_test_data(trained_model, data_p,stock_dimension,state_space)
+    df_account_value, df_actions, trade_data = trade_test_data(trained_model, data_p,stock_dimension,state_space,INDICATORS)
     # 缓存df_account_value到本地
     now = datetime.datetime.now().strftime('%Y%m%d-%Hh%M')
     trade_action_file = f"action_{model}_{now}.xlsx"

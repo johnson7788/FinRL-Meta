@@ -146,3 +146,5 @@ price_array.npy
 # vscode
 /.vscode
 tutorials/1-Introduction/tensorboard_log
+tutorials/1-Introduction/*.xlsx
+tutorials/1-Introduction/*.csv
