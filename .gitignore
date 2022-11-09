@@ -148,3 +148,4 @@ price_array.npy
 tutorials/1-Introduction/tensorboard_log
 tutorials/1-Introduction/*.xlsx
 tutorials/1-Introduction/*.csv
+tutorials/1-Introduction/*.png
